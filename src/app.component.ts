@@ -1,7 +1,8 @@
-import { Component, ChangeDetectionStrategy, signal, inject } from '@angular/core';
+import { Component, ChangeDetectionStrategy, signal, inject, effect } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { GeminiService } from './services/gemini.service';
 import { ChatMessage } from './models/chat.model';
+import { AudioService } from './services/audio.service';
 
 // Component Imports
 import { HeaderComponent } from './header/header.component';
@@ -39,6 +40,7 @@ interface JournalEntry {
 })
 export class AppComponent {
   private geminiService = inject(GeminiService);
+  private audioService = inject(AudioService);
 
   messages = signal<ChatMessage[]>([]);
   isLoading = signal(true);
@@ -51,7 +53,9 @@ export class AppComponent {
   journalHistory = signal<JournalEntry[]>([]);
 
   private recognition: any;
+  private recognitionError = false;
   private audioPlayer: HTMLAudioElement | null = null;
+  private previousMessageCount = 0;
 
   readonly moods = [
     { rating: 1, emoji: '😔', label: 'Ужасно' },
@@ -64,6 +68,20 @@ export class AppComponent {
   constructor() {
     this.initializeChat();
     this.initializeSpeechRecognition();
+
+    effect(() => {
+      const currentMessages = this.messages();
+      if (currentMessages.length > this.previousMessageCount) {
+        const lastMessage = currentMessages[currentMessages.length - 1];
+        if (lastMessage.sender === 'bot') {
+           // Only play for new messages, not the initial greeting
+           if (this.previousMessageCount > 0) {
+              this.audioService.playReceivedSound();
+           }
+        }
+      }
+      this.previousMessageCount = currentMessages.length;
+    });
   }
 
   private initializeSpeechRecognition(): void {
@@ -74,10 +92,20 @@ export class AppComponent {
       this.recognition.interimResults = false;
       this.recognition.lang = 'ru-RU';
 
-      this.recognition.onstart = () => this.isRecording.set(true);
-      this.recognition.onend = () => this.isRecording.set(false);
+      this.recognition.onstart = () => {
+        this.isRecording.set(true);
+        this.audioService.playRecordingStartSound();
+      };
+      this.recognition.onend = () => {
+        if (!this.recognitionError) {
+          this.audioService.playRecordingStopSound();
+        }
+        this.isRecording.set(false);
+        this.recognitionError = false; // Reset for next time
+      };
       this.recognition.onerror = (event: any) => {
         console.error('Speech recognition error', event.error);
+        this.recognitionError = true; // Set flag so 'onend' doesn't play success sound
         this.isRecording.set(false);
       };
       this.recognition.onresult = (event: any) => {
@@ -95,7 +123,6 @@ export class AppComponent {
       this.recognition.stop();
     } else {
       this.recognition.start();
-      this.isRecording.set(true);
     }
   }
 
@@ -117,6 +144,7 @@ export class AppComponent {
     }
 
     this.addUserMessage(trimmedText);
+    this.audioService.playSentSound();
     this.isLoading.set(true);
     this.stopCurrentAudio();
 
@@ -200,6 +228,7 @@ export class AppComponent {
     this.showJournal.set(false);
 
     this.addUserMessage('Я добавил запись в журнал.');
+    this.audioService.playSentSound();
     this.addBotMessage('Спасибо, что поделились. Ваши мысли сохранены.');
   }
 
