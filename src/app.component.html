@@ -1,0 +1,42 @@
+<div class="flex flex-col h-screen bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-200">
+  <app-header 
+    [isLoading]="isLoading()"
+    (journalOpen)="showJournal.set(true)"
+    (affirmationRequested)="getAffirmation()"
+    (reportRequested)="generateReport()"
+    (exerciseRequested)="getExercise($event)">
+  </app-header>
+
+  <app-chat-area
+    class="flex-1 min-h-0"
+    [messages]="messages()"
+    [isLoading]="isLoading()"
+    [moodHistory]="moodHistory()"
+    (ttsRequested)="playTts($event)">
+  </app-chat-area>
+
+  @if (showMoodPicker()) {
+    <footer class="bg-white dark:bg-gray-900 p-4 shadow-t-md">
+      <app-mood-picker 
+        [moods]="moods"
+        (moodSelected)="handleMoodSelection($event)"
+        (closed)="showMoodPicker.set(false)">
+      </app-mood-picker>
+    </footer>
+  } @else {
+    <app-message-input
+      [isLoading]="isLoading()"
+      [isRecording]="isRecording()"
+      [speechApiSupported]="speechApiSupported()"
+      (messageSent)="sendMessage($event)"
+      (recordingToggled)="toggleRecording()">
+    </app-message-input>
+  }
+
+  @if (showJournal()) {
+    <app-journal-modal
+      (entrySaved)="saveJournalEntry($event)"
+      (closed)="showJournal.set(false)">
+    </app-journal-modal>
+  }
+</div>

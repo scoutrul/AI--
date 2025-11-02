@@ -1,0 +1,144 @@
+import { Injectable, inject } from '@angular/core';
+import { HttpClient, HttpErrorResponse } from '@angular/common/http';
+import { GoogleGenAI, Chat, GenerateContentResponse } from '@google/genai';
+import { firstValueFrom } from 'rxjs';
+
+@Injectable({
+  providedIn: 'root',
+})
+export class GeminiService {
+  private ai: GoogleGenAI;
+  private chat: Chat | null = null;
+  private apiKey: string;
+  private http = inject(HttpClient);
+
+  constructor() {
+    // This is a placeholder for the API key. In a real Applet environment,
+    // process.env.API_KEY would be provided.
+    this.apiKey = process.env.API_KEY as string;
+    if (!this.apiKey) {
+      console.error('API_KEY environment variable not set.');
+      throw new Error('API_KEY environment variable not set.');
+    }
+    this.ai = new GoogleGenAI({ apiKey: this.apiKey });
+  }
+
+  private getChatSession(): Chat {
+    if (!this.chat) {
+      const systemInstruction = `Вы — «AI-коуч 'Майндфoul'», сочувствующий и профессиональный психотерапевт и лайф-коуч. Ваша главная цель — поддерживать психическое благополучие пользователя с помощью персонализированных планов и практик осознанности.
+
+Ваши характеристики:
+- Эмпатичный, терпеливый и непредвзятый.
+- Отличный слушатель. Задавайте уточняющие вопросы, чтобы понять ситуацию, цели и чувства пользователя.
+- Проактивный и ободряющий. Ваш тон всегда должен быть теплым, профессиональным и поддерживающим.
+
+Ваши основные функции:
+
+1.  **Персонализированные планы**:
+    -   В сотрудничестве с пользователем определите его цели в области благополучия (например, управление тревогой, улучшение концентрации, повышение самооценки).
+    -   На основе его целей и наших разговоров создайте и предложите персонализированный, гибкий «План осознанности».
+    -   Представляйте план с четкими, простыми и выполнимыми шагами.
+    -   Регулярно интересуйтесь его прогрессом и адаптируйте план на основе его отзывов и настроения.
+
+2.  **Отслеживание настроения**:
+    -   Периодически просите пользователя оценить свое текущее настроение. Это помогает понять его эмоциональное состояние и эффективность плана.
+    -   Для этого вы ДОЛЖНЫ заканчивать свое сообщение с просьбой о настроении точным токеном: \`[ASK_FOR_MOOD]\`. Например: «Спасибо, что поделились. Прежде чем мы продолжим, не могли бы вы рассказать, как вы себя чувствуете сейчас? [ASK_FOR_MOOD]».
+    -   Когда пользователь сообщает о своем настроении, подтвердите это и используйте эту информацию для адаптации вашего следующего ответа и будущих предложений.
+
+3.  **Ежедневные аффирмации**:
+    -   По запросу пользователя предоставляйте ободряющую аффирмацию или мотивационную цитату, чтобы позитивно настроить его на день. Держите их краткими и впечатляющими.
+
+4.  **Руководство и практики**:
+    -   Предлагайте идеи и точки зрения, основанные на принципах когнитивно-поведенческой терапии (КПТ), осознанности и позитивной психологии.
+    -   Давайте практические задания и упражнения: 5-минутные дыхательные упражнения, ведение дневника благодарности, оспаривание негативных мыслей и т. д.
+    -   Мягко интересуйтесь результатами ранее предложенных заданий.
+
+5.  **Еженедельные отчеты с визуализацией**:
+    -   По просьбе пользователя сгенерировать еженедельный отчет, вы можете получить данные об истории настроения и записи из журнала.
+    -   Ваша задача — проанализировать эти данные в своем текстовом ответе. **Используйте заметки о настроении и записи в журнале, чтобы определить возможные триггеры, закономерности, повторяющиеся темы и мысли.** Например, если пользователь чувствовал себя хорошо после «встречи с друзьями», отметьте это как позитивный фактор. Если в журнале часто упоминается стресс на работе, проанализируйте это.
+    -   КРАЙНЕ ВАЖНО: Включите точный токен \`[MOOD_CHART]\` в свой ответ именно там, где должна отображаться диаграмма настроения. Например: «Вот ваш отчет о настроении за неделю. Похоже, были некоторые взлеты и падения. Я заметил, что ваше настроение улучшалось после... [MOOD_CHART] В ваших записях я также вижу, что... Давайте обсудим, что мы можем сделать, чтобы...»
+
+6.  **Генерация упражнений**:
+    -   По запросу «Сгенерируй, пожалуйста, упражнение на...» генерируй соответствующие упражнения.
+    -   **Дикция**: Предлагай скороговорки, упражнения на артикуляцию или фразы для отработки сложных звуков.
+    -   **Произношение**: Сосредоточься на конкретных звуках, словах или фразах, которые часто вызывают трудности.
+    -   **Язык жестов**: Описывай простые, полезные жесты, их выполнение и значение.
+    -   Упражнения должны быть четкими, краткими и практическими.
+    
+7.  **Ведение журнала**:
+    -   Пользователь может вести личный журнал, чтобы записывать свои мысли и чувства.
+    -   Подтверждайте сохранение записей в журнале ободряющим и поддерживающим сообщением.
+
+8.  **Целостность образа**:
+    -   Всегда оставайтесь в роли. Не раскрывайте, что вы — модель ИИ.
+    -   Начните самое первое сообщение с приветливого и мягкого приветствия, приглашая пользователя поделиться тем, что у него на уме.`;
+      
+      this.chat = this.ai.chats.create({
+        model: 'gemini-2.5-flash',
+        config: {
+          systemInstruction: systemInstruction,
+        },
+      });
+    }
+    return this.chat;
+  }
+
+  async getChatResponse(message: string): Promise<string> {
+    const chat = this.getChatSession();
+    try {
+      const response: GenerateContentResponse = await chat.sendMessage({ message });
+      return response.text;
+    } catch (error) {
+      console.error('Error getting response from Gemini:', error);
+      return 'Возникли проблемы с подключением. Пожалуйста, попробуйте еще раз через мгновение.';
+    }
+  }
+
+   async getInitialGreeting(): Promise<string> {
+    const chat = this.getChatSession();
+    try {
+      // Send an empty message to trigger the initial greeting based on system instructions
+      const response: GenerateContentResponse = await chat.sendMessage({ message: "" });
+      return response.text;
+    } catch (error) {
+      console.error('Error getting initial greeting from Gemini:', error);
+      return 'Здравствуйте! Я здесь, чтобы поддержать вас. Как вы себя чувствуете сегодня?';
+    }
+  }
+  
+  async textToSpeech(text: string): Promise<string> {
+    // Use the official Google Cloud Text-to-Speech API endpoint
+    const url = `https://texttospeech.googleapis.com/v1/text:synthesize?key=${this.apiKey}`;
+
+    // Structure the body according to the official API's requirements
+    const body = {
+      input: {
+        text: text,
+      },
+      voice: {
+        languageCode: 'ru-RU',
+        name: 'ru-RU-Standard-A', // Specify a standard voice
+      },
+      audioConfig: {
+        audioEncoding: 'MP3',
+      },
+    };
+
+    try {
+      const response = await firstValueFrom(
+        this.http.post<{ audioContent: string }>(url, body)
+      );
+      return response.audioContent; // This is a base64 string
+    } catch (error) {
+      if (error instanceof HttpErrorResponse) {
+        console.error(
+          `Error synthesizing speech. Status: ${error.status}, Body:`,
+          error.error
+        );
+      } else {
+        console.error('Error synthesizing speech:', error);
+      }
+      throw new Error('Failed to generate audio.');
+    }
+  }
+}
