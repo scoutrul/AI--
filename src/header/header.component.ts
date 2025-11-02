@@ -53,6 +53,23 @@ import { Component, ChangeDetectionStrategy, input, output } from '@angular/core
             <path stroke-linecap="round" stroke-linejoin="round" d="M7 11.5V14m0-2.5v-6a1.5 1.5 0 113 0m-3 6a1.5 1.5 0 00-3 0v2a7.5 7.5 0 0015 0v-5a1.5 1.5 0 00-3 0m-6-3V11m0-5.5v-1a1.5 1.5 0 013 0v1m0 0V11m0-5.5a1.5 1.5 0 013 0v3m0 0V11" />
           </svg>
         </button>
+
+        <div class="h-6 w-px bg-gray-300 dark:bg-gray-600 mx-2"></div>
+        <button 
+            (click)="shareAppRequested.emit()" 
+            [disabled]="isLoading()" 
+            [title]="justCopied() ? 'Ссылка скопирована!' : 'Поделиться приложением'"
+            class="p-2 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-gray-900 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
+            @if (justCopied()) {
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 sm:h-6 sm:w-6 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
+              </svg>
+            } @else {
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 sm:h-6 sm:w-6 text-gray-600 dark:text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8m-4-6l-4-4m0 0L8 6m4-4v12" />
+              </svg>
+            }
+        </button>
       </div>
     </header>
   `,
@@ -60,8 +77,10 @@ import { Component, ChangeDetectionStrategy, input, output } from '@angular/core
 })
 export class HeaderComponent {
   isLoading = input(false);
+  justCopied = input(false);
   journalOpen = output();
   affirmationRequested = output();
   reportRequested = output();
+  shareAppRequested = output();
   exerciseRequested = output<'dictation' | 'pronunciation' | 'gestures'>();
 }

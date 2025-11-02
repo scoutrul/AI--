@@ -47,6 +47,7 @@ export class AppComponent {
   showMoodPicker = signal(false);
   isRecording = signal(false);
   speechApiSupported = signal(false);
+  justCopied = signal(false);
   moodHistory = signal<MoodData[]>([]);
   
   showJournal = signal(false);
@@ -232,6 +233,31 @@ export class AppComponent {
     this.addBotMessage('Спасибо, что поделились. Ваши мысли сохранены.');
   }
 
+  async shareApp(): Promise<void> {
+    if (typeof navigator !== 'undefined' && navigator.share) {
+      try {
+        await navigator.share({
+          title: `AI-коуч 'Майндфул'`,
+          text: `Познакомься с 'Майндфул' — твоим персональным AI-коучем для заботы о ментальном здоровье.`,
+          url: window.location.href,
+        });
+      } catch (error) {
+        console.log('User cancelled share or something went wrong:', error);
+      }
+    } else if (typeof navigator?.clipboard?.writeText === 'function') {
+      try {
+        await navigator.clipboard.writeText(window.location.href);
+        this.justCopied.set(true);
+        setTimeout(() => this.justCopied.set(false), 2000);
+      } catch (err) {
+        console.error('Failed to copy: ', err);
+        alert('Не удалось скопировать ссылку.');
+      }
+    } else {
+      alert('Функция "Поделиться" или "Копировать" не поддерживается в вашем браузере.');
+    }
+  }
+
   private addUserMessage(text: string): void {
      const userMessage: ChatMessage = {
       id: new Date().getTime().toString(),
@@ -245,13 +271,28 @@ export class AppComponent {
   private addBotMessage(text: string): void {
     let messageText = text;
     let containsChart = false;
+    let quickReplies: string[] = [];
 
-    if (text.includes('[ASK_FOR_MOOD]')) {
-      messageText = text.replace('[ASK_FOR_MOOD]', '').trim();
+    // Parse quick replies
+    const quickReplyRegex = /\[QUICK_REPLIES:\s*(\[".*?"(?:,\s*".*?")*\])\]/s;
+    const match = messageText.match(quickReplyRegex);
+
+    if (match && match[1]) {
+      try {
+        quickReplies = JSON.parse(match[1]);
+        messageText = messageText.replace(quickReplyRegex, '').trim();
+      } catch (e) {
+        console.error("Failed to parse quick replies JSON:", e);
+        quickReplies = [];
+      }
+    }
+
+    if (messageText.includes('[ASK_FOR_MOOD]')) {
+      messageText = messageText.replace('[ASK_FOR_MOOD]', '').trim();
       setTimeout(() => this.showMoodPicker.set(true), 100);
     }
     
-    if (text.includes('[MOOD_CHART]')) {
+    if (messageText.includes('[MOOD_CHART]')) {
       containsChart = true;
     }
     
@@ -261,7 +302,8 @@ export class AppComponent {
       text: messageText,
       timestamp: new Date(),
       containsChart: containsChart,
-      audioState: 'idle'
+      audioState: 'idle',
+      quickReplies: quickReplies.length > 0 ? quickReplies : undefined
     };
     this.messages.update(currentMessages => [...currentMessages, botMessage]);
   }

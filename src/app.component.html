@@ -1,10 +1,12 @@
 <div class="flex flex-col h-screen bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-200">
   <app-header 
     [isLoading]="isLoading()"
+    [justCopied]="justCopied()"
     (journalOpen)="showJournal.set(true)"
     (affirmationRequested)="getAffirmation()"
     (reportRequested)="generateReport()"
-    (exerciseRequested)="getExercise($event)">
+    (exerciseRequested)="getExercise($event)"
+    (shareAppRequested)="shareApp()">
   </app-header>
 
   <app-chat-area
@@ -12,7 +14,8 @@
     [messages]="messages()"
     [isLoading]="isLoading()"
     [moodHistory]="moodHistory()"
-    (ttsRequested)="playTts($event)">
+    (ttsRequested)="playTts($event)"
+    (quickReplyClicked)="sendMessage($event)">
   </app-chat-area>
 
   @if (showMoodPicker()) {
