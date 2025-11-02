@@ -6,15 +6,20 @@
     (affirmationRequested)="getAffirmation()"
     (reportRequested)="generateReport()"
     (exerciseRequested)="getExercise($event)"
-    (shareAppRequested)="shareApp()">
+    (shareAppRequested)="shareApp()"
+    (settingsRequested)="showSettings.set(true)">
   </app-header>
+
+  <app-timeline
+    [tasks]="dailyTasks()"
+    (taskClicked)="onTaskClicked($event)">
+  </app-timeline>
 
   <app-chat-area
     class="flex-1 min-h-0"
     [messages]="messages()"
     [isLoading]="isLoading()"
     [moodHistory]="moodHistory()"
-    (ttsRequested)="playTts($event)"
     (quickReplyClicked)="sendMessage($event)">
   </app-chat-area>
 
@@ -41,5 +46,11 @@
       (entrySaved)="saveJournalEntry($event)"
       (closed)="showJournal.set(false)">
     </app-journal-modal>
+  }
+
+  @if (showSettings()) {
+    <app-settings-modal
+      (closed)="showSettings.set(false)">
+    </app-settings-modal>
   }
 </div>

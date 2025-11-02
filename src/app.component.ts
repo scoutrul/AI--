@@ -1,8 +1,11 @@
-import { Component, ChangeDetectionStrategy, signal, inject, effect } from '@angular/core';
+import { Component, ChangeDetectionStrategy, signal, inject, effect, viewChild, DestroyRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { GeminiService } from './services/gemini.service';
 import { ChatMessage } from './models/chat.model';
 import { AudioService } from './services/audio.service';
+import { TaskService } from './services/task.service';
+import { DailyTask } from './models/task.model';
+import { NotificationService } from './services/notification.service';
 
 // Component Imports
 import { HeaderComponent } from './header/header.component';
@@ -10,6 +13,9 @@ import { ChatAreaComponent } from './chat-area/chat-area.component';
 import { MessageInputComponent } from './message-input/message-input.component';
 import { MoodPickerComponent, MoodSelection } from './mood-picker/mood-picker.component';
 import { JournalModalComponent } from './journal-modal/journal-modal.component';
+import { TimelineComponent } from './timeline/timeline.component';
+import { SettingsModalComponent } from './settings-modal/settings-modal.component';
+
 
 // Let TypeScript know about the Web Speech API
 declare var webkitSpeechRecognition: any;
@@ -35,12 +41,17 @@ interface JournalEntry {
     ChatAreaComponent,
     MessageInputComponent,
     MoodPickerComponent,
-    JournalModalComponent
+    JournalModalComponent,
+    TimelineComponent,
+    SettingsModalComponent
   ]
 })
 export class AppComponent {
   private geminiService = inject(GeminiService);
   private audioService = inject(AudioService);
+  private taskService = inject(TaskService);
+  private notificationService = inject(NotificationService); // Initialize the service
+  private destroyRef = inject(DestroyRef);
 
   messages = signal<ChatMessage[]>([]);
   isLoading = signal(true);
@@ -51,12 +62,15 @@ export class AppComponent {
   moodHistory = signal<MoodData[]>([]);
   
   showJournal = signal(false);
+  showSettings = signal(false);
   journalHistory = signal<JournalEntry[]>([]);
+  dailyTasks = signal<DailyTask[]>([]);
 
+  messageInput = viewChild(MessageInputComponent);
   private recognition: any;
   private recognitionError = false;
-  private audioPlayer: HTMLAudioElement | null = null;
   private previousMessageCount = 0;
+  private lastMoodPromptTime: number | null = null;
 
   readonly moods = [
     { rating: 1, emoji: '😔', label: 'Ужасно' },
@@ -69,6 +83,7 @@ export class AppComponent {
   constructor() {
     this.initializeChat();
     this.initializeSpeechRecognition();
+    this.initializeTasks();
 
     effect(() => {
       const currentMessages = this.messages();
@@ -118,6 +133,17 @@ export class AppComponent {
     }
   }
   
+  private initializeTasks(): void {
+    this.dailyTasks.set(this.taskService.getDailyTasks());
+  }
+  
+  onTaskClicked(prompt: string): void {
+    const messageInputComponent = this.messageInput();
+    if (messageInputComponent) {
+      messageInputComponent.setUserInput(prompt);
+    }
+  }
+
   toggleRecording(): void {
     if (!this.speechApiSupported()) return;
     if (this.isRecording()) {
@@ -147,7 +173,6 @@ export class AppComponent {
     this.addUserMessage(trimmedText);
     this.audioService.playSentSound();
     this.isLoading.set(true);
-    this.stopCurrentAudio();
 
     try {
       const botResponseText = await this.geminiService.getChatResponse(trimmedText);
@@ -162,6 +187,8 @@ export class AppComponent {
   handleMoodSelection(selection: MoodSelection): void {
     this.showMoodPicker.set(false);
     const { mood, note } = selection;
+    
+    this.lastMoodPromptTime = Date.now();
 
     this.moodHistory.update(history => [
       ...history, 
@@ -182,7 +209,6 @@ export class AppComponent {
 
   async generateReport(): Promise<void> {
     if (this.isLoading()) return;
-    this.stopCurrentAudio();
     const sevenDaysAgo = new Date();
     sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
 
@@ -272,24 +298,32 @@ export class AppComponent {
     let messageText = text;
     let containsChart = false;
     let quickReplies: string[] = [];
+    
+    // The model can sometimes still produce this, even if it's not ideal.
+    const cleanQuickReplyRegex = /\[QUICK_REPLIES:\s*(".*?")\s*(,\s*".*?")?\s*(,\s*".*?")?\s*\]/s;
+    const match = messageText.match(cleanQuickReplyRegex);
 
-    // Parse quick replies
-    const quickReplyRegex = /\[QUICK_REPLIES:\s*(\[".*?"(?:,\s*".*?")*\])\]/s;
-    const match = messageText.match(quickReplyRegex);
-
-    if (match && match[1]) {
-      try {
-        quickReplies = JSON.parse(match[1]);
-        messageText = messageText.replace(quickReplyRegex, '').trim();
-      } catch (e) {
-        console.error("Failed to parse quick replies JSON:", e);
-        quickReplies = [];
-      }
+    if (match) {
+        try {
+            const repliesJson = `[${match.slice(1).filter(Boolean).join(',')}]`;
+            quickReplies = JSON.parse(repliesJson);
+            messageText = messageText.replace(cleanQuickReplyRegex, '').trim();
+        } catch (e) {
+            console.error("Failed to parse quick replies JSON:", e);
+            quickReplies = [];
+        }
     }
+
 
     if (messageText.includes('[ASK_FOR_MOOD]')) {
       messageText = messageText.replace('[ASK_FOR_MOOD]', '').trim();
-      setTimeout(() => this.showMoodPicker.set(true), 100);
+      
+      const FOUR_HOURS_IN_MS = 4 * 60 * 60 * 1000;
+      const now = Date.now();
+      
+      if (!this.lastMoodPromptTime || (now - this.lastMoodPromptTime > FOUR_HOURS_IN_MS)) {
+        setTimeout(() => this.showMoodPicker.set(true), 100);
+      }
     }
     
     if (messageText.includes('[MOOD_CHART]')) {
@@ -302,71 +336,8 @@ export class AppComponent {
       text: messageText,
       timestamp: new Date(),
       containsChart: containsChart,
-      audioState: 'idle',
       quickReplies: quickReplies.length > 0 ? quickReplies : undefined
     };
     this.messages.update(currentMessages => [...currentMessages, botMessage]);
-  }
-  
-  private base64ToBlob(base64: string, contentType: string = ''): Blob {
-    const byteCharacters = atob(base64);
-    const byteNumbers = new Array(byteCharacters.length);
-    for (let i = 0; i < byteCharacters.length; i++) {
-        byteNumbers[i] = byteCharacters.charCodeAt(i);
-    }
-    const byteArray = new Uint8Array(byteNumbers);
-    return new Blob([byteArray], { type: contentType });
-  }
-
-  private stopCurrentAudio(): void {
-    if (this.audioPlayer) {
-        this.audioPlayer.pause();
-        this.audioPlayer.src = '';
-        this.audioPlayer = null;
-    }
-    this.messages.update(msgs => 
-        msgs.map(m => (m.sender === 'bot' && m.audioState !== 'idle') ? { ...m, audioState: 'idle' } : m)
-    );
-  }
-
-  async playTts(messageToPlay: ChatMessage): Promise<void> {
-    if (messageToPlay.audioState === 'playing') {
-        this.stopCurrentAudio();
-        return;
-    }
-
-    this.stopCurrentAudio();
-    this.messages.update(msgs => msgs.map(m => m.id === messageToPlay.id ? { ...m, audioState: 'loading' } : m));
-
-    try {
-        const audioBase64 = await this.geminiService.textToSpeech(messageToPlay.text.split('[MOOD_CHART]')[0]);
-        
-        const currentMessages = this.messages();
-        const msgInState = currentMessages.find(m => m.id === messageToPlay.id);
-        if (!msgInState || msgInState.audioState !== 'loading') {
-            return; 
-        }
-
-        const audioBlob = this.base64ToBlob(audioBase64, 'audio/mpeg');
-        const audioUrl = URL.createObjectURL(audioBlob);
-        
-        this.audioPlayer = new Audio(audioUrl);
-        this.audioPlayer.play();
-        this.messages.update(msgs => msgs.map(m => m.id === messageToPlay.id ? { ...m, audioState: 'playing' } : m));
-
-        this.audioPlayer.onended = () => {
-            this.stopCurrentAudio();
-            URL.revokeObjectURL(audioUrl);
-        };
-        this.audioPlayer.onerror = () => {
-             console.error('Error playing audio');
-             this.stopCurrentAudio();
-             URL.revokeObjectURL(audioUrl);
-        }
-
-    } catch (error) {
-        console.error('Failed to play TTS audio:', error);
-        this.messages.update(msgs => msgs.map(m => m.id === messageToPlay.id ? { ...m, audioState: 'idle' } : m));
-    }
   }
 }

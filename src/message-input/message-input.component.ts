@@ -42,6 +42,14 @@ export class MessageInputComponent {
       }
     });
   }
+  
+  public setUserInput(text: string): void {
+    this.userInput.set(text);
+    const textarea = this.userInputArea()?.nativeElement;
+    if (textarea) {
+        textarea.focus();
+    }
+  }
 
   sendMessage(): void {
     const text = this.userInput().trim();

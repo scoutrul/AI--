@@ -4,6 +4,5 @@ export interface ChatMessage {
   text: string;
   timestamp: Date;
   containsChart?: boolean;
-  audioState?: 'idle' | 'loading' | 'playing';
   quickReplies?: string[];
 }

@@ -1,7 +1,5 @@
-import { Injectable, inject } from '@angular/core';
-import { HttpClient, HttpErrorResponse } from '@angular/common/http';
+import { Injectable } from '@angular/core';
 import { GoogleGenAI, Chat, GenerateContentResponse } from '@google/genai';
-import { firstValueFrom } from 'rxjs';
 
 @Injectable({
   providedIn: 'root',
@@ -10,7 +8,6 @@ export class GeminiService {
   private ai: GoogleGenAI;
   private chat: Chat | null = null;
   private apiKey: string;
-  private http = inject(HttpClient);
 
   constructor() {
     // This is a placeholder for the API key. In a real Applet environment,
@@ -108,42 +105,6 @@ export class GeminiService {
     } catch (error) {
       console.error('Error getting initial greeting from Gemini:', error);
       return 'Здравствуйте! Я здесь, чтобы поддержать вас. Как вы себя чувствуете сегодня?';
-    }
-  }
-  
-  async textToSpeech(text: string): Promise<string> {
-    // Use the official Google Cloud Text-to-Speech API endpoint
-    const url = `https://texttospeech.googleapis.com/v1/text:synthesize?key=${this.apiKey}`;
-
-    // Structure the body according to the official API's requirements
-    const body = {
-      input: {
-        text: text,
-      },
-      voice: {
-        languageCode: 'ru-RU',
-        name: 'ru-RU-Standard-A', // Specify a standard voice
-      },
-      audioConfig: {
-        audioEncoding: 'MP3',
-      },
-    };
-
-    try {
-      const response = await firstValueFrom(
-        this.http.post<{ audioContent: string }>(url, body)
-      );
-      return response.audioContent; // This is a base64 string
-    } catch (error) {
-      if (error instanceof HttpErrorResponse) {
-        console.error(
-          `Error synthesizing speech. Status: ${error.status}, Body:`,
-          error.error
-        );
-      } else {
-        console.error('Error synthesizing speech:', error);
-      }
-      throw new Error('Failed to generate audio.');
     }
   }
 }
